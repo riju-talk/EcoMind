@@ -5,14 +5,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface Task {
-  task: string;
-  type: string;
-  time: string;
+interface CareTask {
+  id: string;
+  title: string;
+  task_type: string;
+  scheduled_date: string;
+  status: string;
+  plants?: {
+    name: string;
+  };
 }
 
 interface CareCalendarProps {
-  tasks: Task[];
+  tasks: CareTask[];
 }
 
 const CareCalendar: React.FC<CareCalendarProps> = ({ tasks }) => {
@@ -110,22 +115,29 @@ const CareCalendar: React.FC<CareCalendarProps> = ({ tasks }) => {
       
       <Card className="bg-white/60 backdrop-blur-sm border-green-200">
         <CardHeader>
-          <CardTitle>Upcoming Tasks</CardTitle>
+          <CardTitle>Today's Tasks</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {tasks.map((task, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-3 h-3 rounded-full ${
-                    task.type === 'watering' ? 'bg-blue-500' : 
-                    task.type === 'treatment' ? 'bg-green-500' : 'bg-yellow-500'
-                  }`}></div>
-                  <span className="font-medium">{task.task}</span>
+            {tasks.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No tasks scheduled for today!</p>
+            ) : (
+              tasks.map((task) => (
+                <div key={task.id} className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full ${
+                      task.task_type === 'watering' ? 'bg-blue-500' : 
+                      task.task_type === 'fertilizing' ? 'bg-green-500' : 'bg-yellow-500'
+                    }`}></div>
+                    <span className="font-medium">{task.title}</span>
+                    {task.plants && (
+                      <span className="text-sm text-gray-500">({task.plants.name})</span>
+                    )}
+                  </div>
+                  <Badge variant="outline">{task.task_type}</Badge>
                 </div>
-                <Badge variant="outline">{task.time}</Badge>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
