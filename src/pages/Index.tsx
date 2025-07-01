@@ -2,48 +2,95 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, MessageSquare, Plus, Sun, Clock, Camera } from 'lucide-react';
+import { Calendar, MessageSquare, Plus, Sun, Clock, LogOut, User } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import PlantCard from '@/components/PlantCard';
 import CareCalendar from '@/components/CareCalendar';
 import AIAssistant from '@/components/AIAssistant';
 import AddPlantDialog from '@/components/AddPlantDialog';
 
 const Index = () => {
-  const [plants, setPlants] = useState([
-    {
-      id: 1,
-      name: "Monstera Deliciosa",
-      type: "Indoor",
-      location: "Living Room",
-      sunlight: "Bright, indirect",
-      lastWatered: "2 days ago",
-      nextWatering: "Tomorrow",
-      health: "Healthy",
-      image: "https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=300&h=200&fit=crop"
-    },
-    {
-      id: 2,
-      name: "Snake Plant",
-      type: "Indoor",
-      location: "Bedroom",
-      sunlight: "Low light",
-      lastWatered: "1 week ago",
-      nextWatering: "In 3 days",
-      health: "Needs Attention",
-      image: "https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?w=300&h=200&fit=crop"
-    }
-  ]);
-
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
   const [showAddPlant, setShowAddPlant] = useState(false);
 
-  const todaysTasks = [
-    { task: "Water Monstera Deliciosa", type: "watering", time: "Morning" },
-    { task: "Check Snake Plant soil", type: "checking", time: "Evening" },
-    { task: "Apply neem oil to Tulsi", type: "treatment", time: "Afternoon" }
-  ];
+  // Fetch user's plants
+  const { data: plants = [], refetch: refetchPlants } = useQuery({
+    queryKey: ['plants', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plants')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Fetch today's tasks
+  const { data: todaysTasks = [] } = useQuery({
+    queryKey: ['todaysTasks', user?.id],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('care_tasks')
+        .select(`
+          *,
+          plants (name)
+        `)
+        .eq('scheduled_date', today)
+        .eq('status', 'pending');
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out",
+      description: "You've been signed out successfully.",
+    });
+  };
+
+  const handleAddPlant = async (plantData: any) => {
+    const { error } = await supabase
+      .from('plants')
+      .insert([{
+        ...plantData,
+        user_id: user?.id
+      }]);
+
+    if (error) {
+      toast({
+        title: "Error adding plant",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Plant added!",
+      description: "Your new plant has been added successfully.",
+    });
+    
+    refetchPlants();
+    setShowAddPlant(false);
+  };
+
+  // Calculate stats
+  const healthyPlants = plants.filter(p => p.health_status === 'Healthy').length;
+  const plantsNeedingAttention = plants.filter(p => p.health_status === 'Needs Attention').length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
@@ -60,10 +107,20 @@ const Index = () => {
                 <p className="text-sm text-gray-600">Your Smart Plant Care Assistant</p>
               </div>
             </div>
-            <Button onClick={() => setShowAddPlant(true)} className="bg-green-600 hover:bg-green-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Plant
-            </Button>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <User className="w-4 h-4" />
+                <span>{user?.email}</span>
+              </div>
+              <Button onClick={() => setShowAddPlant(true)} className="bg-green-600 hover:bg-green-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Plant
+              </Button>
+              <Button variant="outline" onClick={handleSignOut} size="sm">
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -95,14 +152,14 @@ const Index = () => {
           </Card>
           <Card className="bg-white/60 backdrop-blur-sm border-yellow-200">
             <CardContent className="p-6 text-center">
-              <div className="text-3xl font-bold text-yellow-600 mb-2">1</div>
+              <div className="text-3xl font-bold text-yellow-600 mb-2">{plantsNeedingAttention}</div>
               <div className="text-sm text-gray-600">Needs Attention</div>
             </CardContent>
           </Card>
-          <Card className="bg-white/60 backdrop-blur-sm border-purple-200">
+          <Card className="bg-white/60 backdrop-blur-sm border-green-200">
             <CardContent className="p-6 text-center">
-              <div className="text-3xl font-bold text-purple-600 mb-2">7</div>
-              <div className="text-sm text-gray-600">Day Streak</div>
+              <div className="text-3xl font-bold text-green-600 mb-2">{healthyPlants}</div>
+              <div className="text-sm text-gray-600">Healthy Plants</div>
             </CardContent>
           </Card>
         </div>
@@ -134,31 +191,50 @@ const Index = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {todaysTasks.map((task, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-3 h-3 rounded-full ${
-                          task.type === 'watering' ? 'bg-blue-500' : 
-                          task.type === 'treatment' ? 'bg-green-500' : 'bg-yellow-500'
-                        }`}></div>
-                        <span className="font-medium">{task.task}</span>
+                {todaysTasks.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No tasks scheduled for today!</p>
+                ) : (
+                  <div className="space-y-3">
+                    {todaysTasks.map((task) => (
+                      <div key={task.id} className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            task.task_type === 'watering' ? 'bg-blue-500' : 
+                            task.task_type === 'fertilizing' ? 'bg-green-500' : 'bg-yellow-500'
+                          }`}></div>
+                          <span className="font-medium">{task.title}</span>
+                        </div>
+                        <Badge variant="outline">{task.task_type}</Badge>
                       </div>
-                      <Badge variant="outline">{task.time}</Badge>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             {/* Plants Grid */}
             <div>
               <h3 className="text-2xl font-bold text-gray-800 mb-6">Your Plants</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {plants.map((plant) => (
-                  <PlantCard key={plant.id} plant={plant} />
-                ))}
-              </div>
+              {plants.length === 0 ? (
+                <Card className="bg-white/60 backdrop-blur-sm border-green-200">
+                  <CardContent className="p-12 text-center">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Plus className="w-8 h-8 text-green-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">No plants yet</h3>
+                    <p className="text-gray-600 mb-4">Start your plant care journey by adding your first plant!</p>
+                    <Button onClick={() => setShowAddPlant(true)} className="bg-green-600 hover:bg-green-700">
+                      Add Your First Plant
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {plants.map((plant) => (
+                    <PlantCard key={plant.id} plant={plant} />
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -172,10 +248,11 @@ const Index = () => {
         </Tabs>
       </div>
 
-      <AddPlantDialog open={showAddPlant} onOpenChange={setShowAddPlant} onAddPlant={(plant) => {
-        setPlants([...plants, { ...plant, id: plants.length + 1 }]);
-        setShowAddPlant(false);
-      }} />
+      <AddPlantDialog 
+        open={showAddPlant} 
+        onOpenChange={setShowAddPlant} 
+        onAddPlant={handleAddPlant} 
+      />
     </div>
   );
 };
